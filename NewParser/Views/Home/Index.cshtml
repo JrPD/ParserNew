@@ -1,0 +1,15 @@
+﻿@{
+    ViewBag.Title = "Index";
+}
+
+<h2>Select count of books in subcategories</h2>
+
+@using (Html.BeginForm("ParseBooks","Home", FormMethod.Post))
+{
+    <div id="pro_pag2">
+        @Html.DropDownList("BooksCount", (SelectList)ViewBag.dropdownCount,
+            new {id = "pagesizelist"})
+        <input type="submit" name="PageSize" value="submit" />
+    </div>
+
+}
