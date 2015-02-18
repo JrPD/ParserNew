@@ -27,26 +27,26 @@ namespace NewParser
 
         private IEnumerable<string> urlList;
 
-        public IEnumerable<Book> AllWorker(List<string> contentList)
-        {
-            var books = new List<Book>();
-            var bookUrls = new List<string>();
-            foreach (var content in contentList)
-            {
-                bookUrls.AddRange(SelecrUrl(content));
-            }
-            contentList.Clear();
-            foreach (var bookUrl in bookUrls)
-            {
-                string urlContents = GetURLContents (bookUrl);
-                contentList.Add(urlContents);
-            }
-            foreach (var content in contentList)
-            {
-                books.Add(Parse(content));
-            }
-            return books;
-        }
+        //public IEnumerable<Book> AllWorker(List<string> contentList)
+        //{
+        //    var books = new List<Book>();
+        //    var bookUrls = new List<string>();
+        //    foreach (var content in contentList)
+        //    {
+        //        bookUrls.AddRange(SelecrUrl(content));
+        //    }
+        //    contentList.Clear();
+        //    foreach (var bookUrl in bookUrls)
+        //    {
+        //        string urlContents = GetURLContents (bookUrl);
+        //        contentList.Add(urlContents);
+        //    }
+        //    foreach (var content in contentList)
+        //    {
+        //        books.Add(Parse(content));
+        //    }
+        //    return books;
+        //}
 
         private string GetURLContents (string url)
         {
@@ -61,7 +61,7 @@ namespace NewParser
             }
         }
 
-        public Book Parse(string content)
+        public async Task<Book> Parse(string content, string url, int id)
         {
             lock (this)
             {
@@ -129,17 +129,7 @@ namespace NewParser
                                 {
                                     categories.Add(item.Name);
                                 }
-
-                            // make string
-                            var sb = new StringBuilder();
-                            foreach (var category in categories)
-                            {
-                                sb.Append(category + '\r');
-                            }
-
-                            // return string
-                            _Categories = sb.ToString();
-
+                            
                             // Publication Data
                             workNode = mainNode.SelectSingleNode("//input[@id='pubdate']");
                             if (workNode != null) _PublicationDate = workNode.OuterHtml.ParseDate();
@@ -151,24 +141,25 @@ namespace NewParser
                                                Name = _Name,
                                                Author = _Author,
                                                BestSellersRank = _BestSellersRank,
-                                               //Categories = _Categories,
                                                Comments = _Comments,
                                                Price = _Price,
-                                               PublicationDate = _PublicationDate
+                                               PublicationDate = _PublicationDate,
+                                               Category_Id = id,
+                                               Url = url
                                            };
                             // return book  
                             return book;
                         }
                     }
                 }
-                catch
+                catch (Exception e)
                 {
                 }
             }
             return null;
         }
 
-        public List<string> SelecrUrl(string content)
+        public async  Task<List<string>> SelecrUrl(string content)
         {
             var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
             htmlDoc.LoadHtml(content);

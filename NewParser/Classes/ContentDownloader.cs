@@ -12,77 +12,109 @@ using NewParser.Models;
 
 namespace NewParser.classes
 {
-    public  class ContentDownloader
+    using System.Threading;
+
+    public class ContentDownloader
     {
-        private static  BookInfoEntities _dbContext;
-        private List<Category> categories;
-        private List<Category> subCategories; 
-        private readonly static string mainUrl = "http://www.amazon.com/Best-Sellers-Kindle-Store-eBooks/zgbs/digital-text/154606011/ref=zg_bs_fvp_p_f_154606011?_encoding=UTF8&tf=1";
+        private readonly BookInfoEntities dbContext;
+        private readonly Parser parser;
+        private const string MainUrl = "http://www.amazon.com/Best-Sellers-Kindle-Store-eBooks/zgbs/digital-text/154606011/ref=zg_bs_fvp_p_f_154606011?_encoding=UTF8&tf=1";
+        private int CategoryId;
+        //private Timer
 
         public ContentDownloader()
         {
-            categories = new List<Category>();
-            subCategories = new List<Category>();
-            _dbContext = new BookInfoEntities();
-
-            
+            dbContext = new BookInfoEntities();
+            parser = new Parser();
+            CategoryId = 0;
         }
-        public async Task DownloadContent(int booksCount)
+
+        public async Task DownloadContent(int BooksCount)
         {
             try
             {
-                // завантажуємо контент для головного посилання
-                string content = await GetURLContentsAsync(mainUrl);
-                // отримуємо категорії
-                categories = GetCategories(content);
-                // записуємо в базу. 
-                //треба розділити логіку робити зі списками від логіки збереження даних у базі
-                // потім винести у окрему функцію
-
-
-                foreach (var category in categories)
+                if (!this.dbContext.Categories.Any())
                 {
-                    _dbContext.Categories.Add(category);
-                }
-                 _dbContext.SaveChanges();
-                var categoriesDb = from c in
-                    _dbContext.Categories.OrderBy(i => i.Id)
-                        where c.ParentId == 0
-                        select c;
-
-                // отримуємо підкатегорії
-                foreach (Category category in categories)
-                {
-                    // отримуємо список підкатегорій
-
-                    subCategories =await GetSubCategory(category.Id, category.Url);
-
-                    // todo додаємо підкатегорії до головного списку категорій
-                    //
-                    foreach (var ssCategory in subCategories)
+                    var content = await GetURLContentsAsync(MainUrl);
+                    var categories = GetCategories(content);
+                    categories.forEach<Category>(category => this.dbContext.Categories.Add(category));
+                    foreach (var category in categories)
                     {
-                        // отримати список ППкатегорій
-                        // занести у базу
-                        // коли буде готово даш знати
+                        var subCategories = await  GetSubCategory(category.Id, category.Url);
+                        subCategories.forEach<Category>(c => this.dbContext.Categories.Add(c));
+                        foreach (var ssCategory in subCategories)
+                        {
+                            var subSubCategory = await GetSubSubCategory(ssCategory.Id, ssCategory.Url);
+                            subSubCategory.forEach<Category>(c => this.dbContext.Categories.Add(c));
+                        }
                     }
-
+                    dbContext.SaveChanges();
                 }
-               // _dbContext.SaveChanges();
-               //// очищуємо базу. щоб бачити зміни
-               //ClearCategories();
-               //_dbContext.SaveChanges();
+                foreach (var category in this.dbContext.Categories)
+                {
+                    (await parser.SelecrUrl(await GetURLContentsAsync(category.Url)))
+                        .forEach<string>(async url =>
+                            dbContext.Books.Add(
+                            await parser.Parse((
+                            await GetURLContentsAsync(url)), 
+                            url, 
+                            category.Id)));
+                }
+                dbContext.SaveChanges();
             }
-            catch (Exception)
+            catch
             {
             }
-          
+        }
+
+        public async Task<List<Category>> GetSubSubCategory(int pId, string parentUrl)
+        {
+            var list = new List<Category>();
+            var content = await GetURLContentsAsync(parentUrl);
+            try
+            {
+                var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
+                htmlDoc.LoadHtml(content);
+                if (htmlDoc.DocumentNode != null)
+                {
+                    var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//ul[@id='zg_browseRoot']/ul/ul/ul/ul/ul");
+                    if (mainNode != null)
+                    {
+                        var keys = mainNode.ChildNodes.Where(node => node.HasChildNodes)
+                                .Select(node => node.FirstChild)
+                                .Select(item => item.InnerText).toArray();
+                        var values = mainNode.ChildNodes.Where(node => node.HasChildNodes)
+                                .Select(node => node.FirstChild)
+                                .Select(item => item.OuterHtml).toArray();
+                        if (keys.notNull() && values.notNull())
+                            for (var i = 0; i < values.Count(); i++)
+                            {
+                                var tmp = values[i].Remove(0, 9);
+                                tmp = tmp.Remove(tmp.IndexOf('\''));
+                                var cat = new Category()
+                                {
+                                    Id = CategoryId,
+                                    Name = keys[i],
+                                    Url = tmp,
+                                    ParentId = pId
+                                };
+                                CategoryId++;
+                                list.Add(cat);
+                            }
+                        return list;
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return null;
         }
 
         public async Task<List<Category>> GetSubCategory(int pId, string parentUrl)
         {
-            List<Category> list = new List<Category>();
-            string content = await GetURLContentsAsync(parentUrl);
-
+            var list = new List<Category>();
+            var content = await GetURLContentsAsync(parentUrl);
             try
             {
                 var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
@@ -103,55 +135,55 @@ namespace NewParser.classes
                             {
                                 var tmp = values[i].Remove(0, 9);
                                 tmp = tmp.Remove(tmp.IndexOf('\''));
-                                Category cat = new Category()
+                                var cat = new Category()
                                 {
+                                    Id = CategoryId,
                                     Name = keys[i],
                                     Url = tmp,
                                     ParentId = pId
                                 };
+                                CategoryId++;
                                 list.Add(cat);
-
                             }
                         return list;
                     }
                 }
             }
-            catch (Exception)
-            {
-
+            catch 
+            {     
             }
             return null;
-
         }
         
-        public void ClearCategories()
+        public void ClearBooks()
         {
-            var rows = from o in _dbContext.Categories
+            var rows = from o in this.dbContext.Books
                        select o;
             foreach (var row in rows)
-            {
-                _dbContext.Categories.Remove(row);
-            }
+                this.dbContext.Books.Remove(row);
         }
 
-        // load content async
         private async Task<string> GetURLContentsAsync(string url)
         {
-            // сам точно не знаю шо тут до чого. copy-paste
             var webReq = (HttpWebRequest)WebRequest.Create(url);
-
-            using (WebResponse response = await webReq.GetResponseAsync())
+            using (var response = await webReq.GetResponseAsync())
             {
-                using (var sr = new StreamReader(response.GetResponseStream()))
+                try
                 {
-                    // getting string
-                    var responseJson = sr.ReadToEnd();
-                    return responseJson;
+                    using (var sr = new StreamReader(response.GetResponseStream()))
+                    {
+                        var responseJson = sr.ReadToEnd();
+                        return responseJson;
+                    }
+                }
+                catch
+                {
+                    return null;
                 }
             }
         }
 
-        private  List<Category> GetCategories(string content)
+        private List<Category> GetCategories(string content)
         {
             try
             {
@@ -162,6 +194,7 @@ namespace NewParser.classes
                     var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//ul[@id='zg_browseRoot']/ul/ul/ul");
                     if (mainNode != null)
                     {
+                        var categories = new List<Category>();
                         var keys = mainNode.ChildNodes.Where(node => node.HasChildNodes)
                                 .Select(node => node.FirstChild)
                                 .Select(item => item.InnerText).toArray();
@@ -173,28 +206,25 @@ namespace NewParser.classes
                             {
                                 var tmp = values[i].Remove(0, 9);
                                 tmp = tmp.Remove(tmp.IndexOf('\''));
-                                Category cat = new Category()
+                                var cat = new Category()
                                 {
+                                    Id = CategoryId,
                                     Name = keys[i],
                                     Url = tmp,
                                     ParentId = 0
                                 };
-                                categories.Add(cat);
-                               
+                                CategoryId++;
+                                categories.Add(cat);                               
                             }
                         return categories;
                     }
                 }
             }
-            catch (Exception)
+            catch
             {
-                
             }
             return null;
         }
-
-     
-     
     }
 }
 

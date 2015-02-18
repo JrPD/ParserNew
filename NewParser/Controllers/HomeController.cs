@@ -45,8 +45,7 @@ namespace NewParser.Controllers
             InitializeList();
             Log.Info("Index Method");
 
-            ContentDownloader downloader = new ContentDownloader();
-            await  downloader.DownloadContent(20);
+            MvcApplication.ContentDownloader.DownloadContent(20);
             //var urlList = categoryList.Where(y => y.UrlName == id).Select(x => x.Url).toList();
             return View();
         }
@@ -56,8 +55,6 @@ namespace NewParser.Controllers
         {
             // функція, шо робить всю магію
           
-            ContentDownloader downloader = new ContentDownloader();
-            downloader.DownloadContent(BooksCount);
 
             Log.Info("Parsebooks Method{0}", BooksCount);
             return "Parsing is completed. "+ "Books count: " + BooksCount;
