@@ -54,8 +54,8 @@ namespace NewParser.Controllers
         public string ParseBooks(int BooksCount)
         {
             // функція, шо робить всю магію
-          
 
+            MvcApplication.ContentDownloader.DownloadContent(BooksCount);
             Log.Info("Parsebooks Method{0}", BooksCount);
             return "Parsing is completed. "+ "Books count: " + BooksCount;
         }

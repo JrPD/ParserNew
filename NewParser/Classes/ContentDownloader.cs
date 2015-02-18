@@ -14,18 +14,26 @@ namespace NewParser.classes
 {
     using System.Threading;
 
+    using WebGrease.Css.Extensions;
+
     public class ContentDownloader
     {
         private readonly BookInfoEntities dbContext;
         private readonly Parser parser;
         private const string MainUrl = "http://www.amazon.com/Best-Sellers-Kindle-Store-eBooks/zgbs/digital-text/154606011/ref=zg_bs_fvp_p_f_154606011?_encoding=UTF8&tf=1";
         private int CategoryId;
+        private List<Category> main;
+        private List<Category> smain;
+        private List<Category> ssmain;  
         //private Timer
 
         public ContentDownloader()
         {
             dbContext = new BookInfoEntities();
             parser = new Parser();
+            main = new List<Category>();
+            smain = new List<Category>();
+            ssmain = new List<Category>();
             CategoryId = 0;
         }
 
@@ -33,33 +41,41 @@ namespace NewParser.classes
         {
             try
             {
-                if (!this.dbContext.Categories.Any())
+                if (main.Count == 0 || smain.Count == 0 || ssmain.Count == 0)
                 {
+                    main = new List<Category>();
+                    smain = new List<Category>();
+                    ssmain = new List<Category>();
                     var content = await GetURLContentsAsync(MainUrl);
-                    var categories = GetCategories(content);
-                    categories.forEach<Category>(category => this.dbContext.Categories.Add(category));
-                    foreach (var category in categories)
+                    main = GetCategories(content);
+                    foreach (var category in main)
                     {
-                        var subCategories = await  GetSubCategory(category.Id, category.Url);
-                        subCategories.forEach<Category>(c => this.dbContext.Categories.Add(c));
-                        foreach (var ssCategory in subCategories)
+                        smain.addRange(await GetSubCategory(category.Id, category.Url));
+                        foreach (var ssCategory in smain)
                         {
-                            var subSubCategory = await GetSubSubCategory(ssCategory.Id, ssCategory.Url);
-                            subSubCategory.forEach<Category>(c => this.dbContext.Categories.Add(c));
+                            ssmain.AddRange(await GetSubSubCategory(ssCategory.Id, ssCategory.Url));
                         }
                     }
+                }
+                if (!this.dbContext.Categories.Any())
+                {
+                    main.forEach<Category>(c => this.dbContext.Categories.Add(c));
+                    smain.forEach<Category>(c => this.dbContext.Categories.Add(c));
+                    ssmain.forEach<Category>(c => this.dbContext.Categories.Add(c));
                     dbContext.SaveChanges();
                 }
-                foreach (var category in this.dbContext.Categories)
-                {
-                    (await parser.SelecrUrl(await GetURLContentsAsync(category.Url)))
-                        .forEach<string>(async url =>
-                            dbContext.Books.Add(
-                            await parser.Parse((
-                            await GetURLContentsAsync(url)), 
-                            url, 
-                            category.Id)));
-                }
+                var books = new List<Book>();
+                foreach (var category in this.smain
+                    .SelectMany(subcategory => this.ssmain.
+                        @where(c=>c.ParentId==subcategory.Id).
+                        take(BooksCount))) 
+                        (await this.parser.SelecrUrl(await 
+                            this.GetURLContentsAsync(category.Url)))
+                            .forEach<string>(async url =>
+                            books.Add(await 
+                            this.parser.Parse((await 
+                            this.GetURLContentsAsync(url)), url, category.Id)));
+                books.forEach<Book>(b => dbContext.Books.Add(b));
                 dbContext.SaveChanges();
             }
             catch
