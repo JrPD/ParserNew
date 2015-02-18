@@ -40,20 +40,20 @@ namespace NewParser.classes
                 // потім винести у окрему функцію
 
 
-                //foreach (var category in categories)
-                //{
-                //    _dbContext.Categories.Add(category);
-                //}
-
-
+                foreach (var category in categories)
+                {
+                    _dbContext.Categories.Add(category);
+                }
+                 _dbContext.SaveChanges();
+                var categoriesDb = from c in
+                    _dbContext.Categories.OrderBy(i => i.Id)
+                        where c.ParentId == 0
+                        select c;
 
                 // отримуємо підкатегорії
                 foreach (Category category in categories)
                 {
                     // отримуємо список підкатегорій
-                    // todo щоб присвоїти підкатегорії parentid треба спочатку зберегти у базу
-                    // щоб присвоти всім категоріям id. або додавати вручну
-                    // 
 
                     subCategories =await GetSubCategory(category.Id, category.Url);
 
@@ -69,8 +69,8 @@ namespace NewParser.classes
                 }
                // _dbContext.SaveChanges();
                //// очищуємо базу. щоб бачити зміни
-               // clearcategories();
-               // _dbContext.SaveChanges();
+               //ClearCategories();
+               //_dbContext.SaveChanges();
             }
             catch (Exception)
             {
