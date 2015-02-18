@@ -27,5 +27,6 @@ namespace NewParser.Models
     
         public DbSet<Book> Books { get; set; }
         public DbSet<Category> Categories { get; set; }
+        public DbSet<C__MigrationHistory> C__MigrationHistory { get; set; }
     }
 }

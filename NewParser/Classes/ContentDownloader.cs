@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data.Entity;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -9,6 +10,7 @@ using System.Web;
 using FluentSharp.CoreLib;
 using HtmlAgilityPack;
 using NewParser.Models;
+using System.Threading.Tasks; 
 
 namespace NewParser.classes
 {
@@ -24,7 +26,9 @@ namespace NewParser.classes
         private int CategoryId;
         private List<Category> main;
         private List<Category> smain;
-        private List<Category> ssmain;  
+        private List<Category> ssmain;
+        private readonly NLog.Logger Log = MvcApplication.logger;
+
         //private Timer
 
         public ContentDownloader()
@@ -44,16 +48,38 @@ namespace NewParser.classes
                 if (main.Count == 0 || smain.Count == 0 || ssmain.Count == 0)
                 {
                     main = new List<Category>();
-                    smain = new List<Category>();
+                    // ці категорії вже у базі. можна пропустити
+                    //var content = await GetURLContentsAsync(MainUrl);
+                    //main = GetCategories(content);
+                    //SaveCategories(main);
+                    
                     ssmain = new List<Category>();
-                    var content = await GetURLContentsAsync(MainUrl);
-                    main = GetCategories(content);
-                    foreach (var category in main)
+
+                    var categories = from c in dbContext.Categories
+                               where c.ParentId == 0 select c;
+                    main = new List<Category>();
+
+                    //todo отримав - записав у базу.
+                    //todo id - автоінкремент. кожен раз читити з бази  - зробив. щоб прочитати ід треба лізти до бд
+                    //todo додати поле для вводу mainUrl 
+                    // ти хотів роботи на завтра?
+
+                    foreach (var category in categories)
                     {
-                        smain.addRange(await GetSubCategory(category.Id, category.Url));
+                       
+                        main.addRange(await GetSubCategory(category.Id, category.Url));
+                        // все асинхронно. тепер не працює. видає помилку.
+                        // раджу почитати https://msdn.microsoft.com/en-us/data/jj819165.aspx
+                        SaveCategories(main);
+            
+                        main.forEach<Category>(b => dbContext.Categories.Add(b));
+                        //dbContext.SaveChanges();
+
+
                         foreach (var ssCategory in smain)
                         {
-                            ssmain.AddRange(await GetSubSubCategory(ssCategory.Id, ssCategory.Url));
+                                ssmain.AddRange(await GetSubSubCategory(ssCategory.Id, ssCategory.Url));
+                                Debug.Write("OK-----------------\n");
                         }
                     }
                 }
@@ -64,24 +90,37 @@ namespace NewParser.classes
                     ssmain.forEach<Category>(c => this.dbContext.Categories.Add(c));
                     dbContext.SaveChanges();
                 }
+
+                // todo книги також додавати по мірі надходження
+                // todo прив'язати книги до категорії. коли потім вбиратимеш категорію - щоб виводило потрбіну книжку
+
                 var books = new List<Book>();
                 foreach (var category in this.smain
                     .SelectMany(subcategory => this.ssmain.
-                        @where(c=>c.ParentId==subcategory.Id).
-                        take(BooksCount))) 
-                        (await this.parser.SelecrUrl(await 
-                            this.GetURLContentsAsync(category.Url)))
-                            .forEach<string>(async url =>
-                            books.Add(await 
-                            this.parser.Parse((await 
-                            this.GetURLContentsAsync(url)), url, category.Id)));
+                        @where(c => c.ParentId == subcategory.Id).
+                        take(BooksCount)))
+                    (await this.parser.SelecrUrl(await
+                        this.GetURLContentsAsync(category.Url)))
+                        .forEach<string>(async url =>
+                        books.Add(await
+                        this.parser.Parse((await
+                        this.GetURLContentsAsync(url)), url, category.Id)));
                 books.forEach<Book>(b => dbContext.Books.Add(b));
                 dbContext.SaveChanges();
             }
-            catch
+            catch(Exception ex)
             {
+                string a = ex.Message;
             }
         }
+        private  async Task SaveCategories(List<Category> categories)
+        {
+            main.forEach<Category>(b => dbContext.Categories.Add(b));
+            //todo треба зробити асинхронним
+            await dbContext.SaveChangesAsync();
+            main = new List<Category>();
+        }
+       
 
         public async Task<List<Category>> GetSubSubCategory(int pId, string parentUrl)
         {
@@ -153,7 +192,7 @@ namespace NewParser.classes
                                 tmp = tmp.Remove(tmp.IndexOf('\''));
                                 var cat = new Category()
                                 {
-                                    Id = CategoryId,
+                                    //Id = CategoryId,
                                     Name = keys[i],
                                     Url = tmp,
                                     ParentId = pId
@@ -224,7 +263,7 @@ namespace NewParser.classes
                                 tmp = tmp.Remove(tmp.IndexOf('\''));
                                 var cat = new Category()
                                 {
-                                    Id = CategoryId,
+                                   // Id = CategoryId,
                                     Name = keys[i],
                                     Url = tmp,
                                     ParentId = 0

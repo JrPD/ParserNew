@@ -31,6 +31,7 @@ namespace NewParser.Controllers
 
             ViewBag.dropdownCount = new SelectList(new Dictionary<string, int>
             {
+                {"1", 1},
                 {"20", 20},
                 {"40", 40},
                 {"60", 60},
@@ -40,22 +41,21 @@ namespace NewParser.Controllers
             ViewBag.counts = 4;
         }
 
-        public async Task<ActionResult> Index()
+        public  ActionResult Index()
         {
             InitializeList();
             Log.Info("Index Method");
 
-            MvcApplication.ContentDownloader.DownloadContent(20);
             //var urlList = categoryList.Where(y => y.UrlName == id).Select(x => x.Url).toList();
             return View();
         }
 
         [HttpPost]
-        public string ParseBooks(int BooksCount)
+        public async Task<string> ParseBooks(int BooksCount)
         {
             // функція, шо робить всю магію
 
-            MvcApplication.ContentDownloader.DownloadContent(BooksCount);
+             await MvcApplication.ContentDownloader.DownloadContent(BooksCount);
             Log.Info("Parsebooks Method{0}", BooksCount);
             return "Parsing is completed. "+ "Books count: " + BooksCount;
         }
