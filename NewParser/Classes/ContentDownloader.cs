@@ -122,17 +122,22 @@ namespace NewParser.classes
                 if (mainNode != null)
                 {
                     var nodes = mainNode.SelectNodes("//div[@class='zg_title']");
-                    var cont = from a in nodes.Descendants("a") select a.Attributes["href"].Value.Replace("\n", "");
-                    var bookURLs = new List<string>();
-
-                    // adding items from cont to list
-                    foreach (var item in cont.Where(item => !bookURLs.Contains(item)))
+                    if (nodes != null)
                     {
-                        bookURLs.Add(item);
+                        var cont = from a in nodes.Descendants("a") select a.Attributes["href"].Value.Replace("\n", "");
+
+                        var bookURLs = new List<string>();
+
+                        // adding items from cont to list
+                        foreach (var item in cont.Where(item => !bookURLs.Contains(item)))
+                        {
+                            bookURLs.Add(item);
+                        }
+                        return bookURLs;
                     }
-                    return bookURLs;
                 }
             }
+            
             return new List<string>();
         }
 
