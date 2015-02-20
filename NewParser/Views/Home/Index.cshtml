@@ -9,6 +9,7 @@
     <div id="pro_pag2">
         @Html.DropDownList("BooksCount", (SelectList)ViewBag.dropdownCount,
             new {id = "pagesizelist"})
+        @Html.TextArea("BooksUrl",ViewBag.Url, new {id = "pagesizelist"})
         <input type="submit" name="PageSize" value="submit" />
     </div>
 

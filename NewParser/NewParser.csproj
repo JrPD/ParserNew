@@ -156,9 +156,7 @@
     </Compile>
     <Compile Include="Classes\ContentDownloader.cs" />
     <Compile Include="Classes\Functions.cs" />
-    <Compile Include="Models\C__MigrationHistory.cs">
-      <DependentUpon>Model1.tt</DependentUpon>
-    </Compile>
+    <Compile Include="Models\LevelName.cs" />
     <Compile Include="Models\Model1.Context.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>

@@ -16,6 +16,8 @@ namespace NewParser.classes
 {
     using System.Threading;
 
+    using Microsoft.Ajax.Utilities;
+
     using WebGrease.Css.Extensions;
 
     public class ContentDownloader
@@ -41,91 +43,200 @@ namespace NewParser.classes
             CategoryId = 0;
         }
 
-        public async Task DownloadContent(int BooksCount)
+        public void OneMainDb()
         {
+            //without auto increment Id, only manual set)
             try
             {
-                if (main.Count == 0 || smain.Count == 0 || ssmain.Count == 0)
-                {
                     main = new List<Category>();
-                    // ці категорії вже у базі. можна пропустити
-                    //var content = await GetURLContentsAsync(MainUrl);
-                    //main = GetCategories(content);
-                    //SaveCategories(main);
-                    
+                    smain = new List<Category>();
                     ssmain = new List<Category>();
-
-                    var categories = from c in dbContext.Categories
-                               where c.ParentId == 0 select c;
-                    main = new List<Category>();
-
-                    //todo отримав - записав у базу.
-                    //todo id - автоінкремент. кожен раз читити з бази  - зробив. щоб прочитати ід треба лізти до бд
-                    //todo додати поле для вводу mainUrl 
-                    // ти хотів роботи на завтра?
-
-                    foreach (var category in categories)
+                    if (!this.dbContext.Categories.Any())
                     {
-                       
-                        main.addRange(await GetSubCategory(category.Id, category.Url));
-                        // все асинхронно. тепер не працює. видає помилку.
-                        // раджу почитати https://msdn.microsoft.com/en-us/data/jj819165.aspx
-                        SaveCategories(main);
-            
-                        main.forEach<Category>(b => dbContext.Categories.Add(b));
-                        //dbContext.SaveChanges();
-
-
-                        foreach (var ssCategory in smain)
+                        var content = GetURLContentsAsync(MainUrl);
+                        main = GetCategories(content);
+                        main.All(c => {c.LevelName = (int?)LevelName.Category; return true;});
+                        main.forEach<Category>(c => dbContext.Categories.Add(c));
+                        lock (dbContext)
                         {
-                                ssmain.AddRange(await GetSubSubCategory(ssCategory.Id, ssCategory.Url));
-                                Debug.Write("OK-----------------\n");
+                            dbContext.SaveChanges();
+                        }
+                        foreach (var tmpSCat in this.main
+                            .Select(category => (this.GetSubCategory(category.Id, category.Url))))
+                        {
+                            this.smain.addRange(tmpSCat);
+                            smain.All(c => { c.LevelName = (int?)LevelName.SubCategory; return true; });
+                            tmpSCat.forEach<Category>(c => this.dbContext.Categories.Add(c));
+                            lock (dbContext)
+                            {
+                                dbContext.SaveChanges();
+                            }
+                            foreach (var tmpSSCat in this.smain
+                                .Select(ssCategory => this.GetSubSubCategory(ssCategory.Id, ssCategory.Url)))
+                            {
+                                this.ssmain.AddRange(tmpSSCat);
+                                ssmain.All(c => { c.LevelName = (int?)LevelName.SubSubCategory; return true; });
+                                tmpSSCat.forEach<Category>(c => this.dbContext.Categories.Add(c));
+                                lock (dbContext)
+                                {
+                                    dbContext.SaveChanges();
+                                }
+                            }
                         }
                     }
-                }
-                if (!this.dbContext.Categories.Any())
-                {
-                    main.forEach<Category>(c => this.dbContext.Categories.Add(c));
-                    smain.forEach<Category>(c => this.dbContext.Categories.Add(c));
-                    ssmain.forEach<Category>(c => this.dbContext.Categories.Add(c));
-                    dbContext.SaveChanges();
-                }
-
-                // todo книги також додавати по мірі надходження
-                // todo прив'язати книги до категорії. коли потім вбиратимеш категорію - щоб виводило потрбіну книжку
-
-                var books = new List<Book>();
-                foreach (var category in this.smain
-                    .SelectMany(subcategory => this.ssmain.
-                        @where(c => c.ParentId == subcategory.Id).
-                        take(BooksCount)))
-                    (await this.parser.SelecrUrl(await
-                        this.GetURLContentsAsync(category.Url)))
-                        .forEach<string>(async url =>
-                        books.Add(await
-                        this.parser.Parse((await
-                        this.GetURLContentsAsync(url)), url, category.Id)));
-                books.forEach<Book>(b => dbContext.Books.Add(b));
-                dbContext.SaveChanges();
+                    else
+                    {
+                        main.AddRange(dbContext.Categories.Where(c => c.LevelName == (int?)LevelName.Category));
+                        smain.AddRange(dbContext.Categories.Where(c => c.LevelName == (int?)LevelName.SubCategory));
+                        ssmain.AddRange(dbContext.Categories.Where(c => c.LevelName == (int?)LevelName.SubSubCategory));
+                    }
             }
-            catch(Exception ex)
-            {
-                string a = ex.Message;
-            }
+            catch
+            {}
         }
-        private  async Task SaveCategories(List<Category> categories)
+
+
+        public async Task<List<Book>>  DownloadContent(int BooksCount, string url)
+        {
+                //if (main.Count == 0 || smain.Count == 0 || ssmain.Count == 0)
+                //{
+                //    for preload all DB only once and after allways search in DB
+                //    OneMainDb();
+                //}
+                //tmp class for dunamicly download
+                return DunamiclyDownload(url,BooksCount);
+        }
+
+        private List<Book> DunamiclyDownload(string url, int count)
+        {
+            //with auto increment Id
+            main = new List<Category>();
+            smain = new List<Category>();
+            ssmain = new List<Category>();
+            var content = GetURLContentsAsync(url);
+            dbContext.Categories.RemoveRange(dbContext.Categories.Where(c=>c!=null));
+            try
+            {
+                var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
+                htmlDoc.LoadHtml(content);
+                HtmlNode category = null;
+                int parId = 0;
+                if (htmlDoc.DocumentNode != null)
+                {
+                    var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//ul[@id='zg_browseRoot']/ul/ul/ul");
+                    if (mainNode != null)
+                    {
+                        category = mainNode.SelectSingleNode("li");
+                        if (category.isNotNull())
+                        {
+                            var CategoryUrl = category.OuterHtml.Remove(0, 9);
+                            CategoryUrl = CategoryUrl.Remove(CategoryUrl.IndexOf('\''));
+                            main.Add(
+                                new Category()
+                                    {
+                                        Name = category.InnerText,
+                                        LevelName = (int?)LevelName.Category,
+                                        ParentId = 0,
+                                        Url = CategoryUrl
+                                    });
+                            dbContext.Categories.AddRange(main);
+                            dbContext.SaveChanges();
+                            var tmpCat =
+                                this.dbContext.Categories.FirstOrDefault(
+                                    c => c.Name == category.InnerText && c.Url == CategoryUrl);
+                            if (tmpCat != null)
+                            {
+                                parId = tmpCat.Id;
+                            }
+                        }
+                        mainNode = htmlDoc.DocumentNode.SelectSingleNode("//ul[@id='zg_browseRoot']/ul/ul/ul/ul");
+                        if (mainNode != null)
+                        {
+                            category = mainNode.SelectSingleNode("li");
+                            if (category.isNotNull())
+                            {
+                                var CategoryUrl = category.OuterHtml.Remove(0, 9);
+                                CategoryUrl = CategoryUrl.Remove(CategoryUrl.IndexOf('\''));
+                                smain.Add(
+                                    new Category()
+                                        {
+                                            Name = category.InnerText,
+                                            LevelName = (int?)LevelName.SubCategory,
+                                            ParentId = parId,
+                                            Url = CategoryUrl
+                                        });
+                                dbContext.Categories.AddRange(smain);
+                                dbContext.SaveChanges();
+                                var tmpCat =
+                                    this.dbContext.Categories.FirstOrDefault(
+                                        c => c.Name == category.InnerText && c.Url == CategoryUrl);
+                                if (tmpCat != null)
+                                {
+                                    parId = tmpCat.Id;
+                                }
+                            }
+                        }
+                        var max = (int)(count / 20);
+                        if (max < 2)
+                            max = 3;
+                        for (var j = 2; j < max; j++)
+                        {
+
+                            mainNode = htmlDoc.DocumentNode.SelectSingleNode("//ul[@id='zg_browseRoot']/ul/ul/ul/ul/ul");
+                            if (mainNode != null)
+                            {
+                                var keys =
+                                    mainNode.ChildNodes.Where(node => node.HasChildNodes)
+                                        .Select(node => node.FirstChild)
+                                        .Select(item => item.InnerText)
+                                        .toArray();
+                                var values =
+                                    mainNode.ChildNodes.Where(node => node.HasChildNodes)
+                                        .Select(node => node.FirstChild)
+                                        .Select(item => item.OuterHtml)
+                                        .toArray();
+                                if (keys.notNull() && values.notNull())
+                                    for (var i = 0; i < values.Count(); i++)
+                                    {
+                                        var tmp = values[i].Remove(0, 9);
+                                        tmp = tmp.Remove(tmp.IndexOf('\''));
+                                        var cat = new Category()
+                                                      {
+                                                          Id = CategoryId,
+                                                          Name = keys[i],
+                                                          Url = tmp,
+                                                          ParentId = parId,
+                                                          LevelName = (int?)LevelName.SubSubCategory
+                                                      };
+                                        CategoryId++;
+                                        ssmain.Add(cat);
+                                    }
+                            }
+                            content = GetURLContentsAsync(url + "#" + j);
+                            htmlDoc.LoadHtml(content);
+                        }
+                        dbContext.Categories.AddRange(ssmain.take(count));
+                        dbContext.SaveChanges();
+                    }
+                }
+            }
+            catch
+            {}
+            return dbContext.Books.Where(c=>c.Name!=null).toList();
+        }
+
+        private  void SaveCategories(List<Category> categories)
         {
             main.forEach<Category>(b => dbContext.Categories.Add(b));
-            //todo треба зробити асинхронним
-            await dbContext.SaveChangesAsync();
+            dbContext.SaveChangesAsync();
             main = new List<Category>();
         }
        
 
-        public async Task<List<Category>> GetSubSubCategory(int pId, string parentUrl)
+        public List<Category> GetSubSubCategory(int pId, string parentUrl)
         {
             var list = new List<Category>();
-            var content = await GetURLContentsAsync(parentUrl);
+            var content = GetURLContentsAsync(parentUrl);
             try
             {
                 var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
@@ -166,10 +277,10 @@ namespace NewParser.classes
             return null;
         }
 
-        public async Task<List<Category>> GetSubCategory(int pId, string parentUrl)
+        public List<Category> GetSubCategory(int pId, string parentUrl)
         {
             var list = new List<Category>();
-            var content = await GetURLContentsAsync(parentUrl);
+            var content = GetURLContentsAsync(parentUrl);
             try
             {
                 var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
@@ -218,10 +329,10 @@ namespace NewParser.classes
                 this.dbContext.Books.Remove(row);
         }
 
-        private async Task<string> GetURLContentsAsync(string url)
+        private string GetURLContentsAsync(string url)
         {
             var webReq = (HttpWebRequest)WebRequest.Create(url);
-            using (var response = await webReq.GetResponseAsync())
+            using (var response = webReq.GetResponseAsync().Result)
             {
                 try
                 {
