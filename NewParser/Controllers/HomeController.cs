@@ -51,11 +51,11 @@ namespace NewParser.Controllers
         }
 
         [HttpPost]
-        public async Task<string> ParseBooks(int BooksCount)
+        public async Task<string> ParseBooks(int BooksCount, string BooksUrl)
         {
             // функція, шо робить всю магію
 
-             await MvcApplication.ContentDownloader.DownloadContent(BooksCount, null);
+            await MvcApplication.ContentDownloader.DownloadContent(BooksCount, BooksUrl);
             Log.Info("Parsebooks Method{0}", BooksCount);
             return "Parsing is completed. "+ "Books count: " + BooksCount;
         }

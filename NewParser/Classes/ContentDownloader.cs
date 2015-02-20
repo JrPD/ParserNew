@@ -104,7 +104,7 @@ namespace NewParser.classes
                 //    OneMainDb();
                 //}
                 //tmp class for dunamicly download
-                return DunamiclyDownload(url,BooksCount);
+                return  DunamiclyDownload(url,BooksCount);
         }
 
         private List<Book> DunamiclyDownload(string url, int count)
