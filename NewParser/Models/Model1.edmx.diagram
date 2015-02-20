@@ -5,8 +5,8 @@
     <!-- Diagram content (shape and connector positions) -->
     <edmx:Diagrams>
       <Diagram DiagramId="b76b6838f61344e284ad48e3124f73e2" Name="Diagram1" ZoomLevel="88">
-        <EntityTypeShape EntityType="BookInfoModel.Book" Width="1.5" PointX="3.4887912271026482" PointY="3.610531525505023" />
-        <EntityTypeShape EntityType="BookInfoModel.Category" Width="1.5" PointX="2.5981972117899903" PointY="30.237181379570245" />
+        <EntityTypeShape EntityType="BookInfoModel.Book" Width="1.5" PointX="11.752543363604948" PointY="21.48774282144743" />
+        <EntityTypeShape EntityType="BookInfoModel.Category" Width="1.5" PointX="4.8743161842573048" PointY="20.809968421612851" />
         <AssociationConnector Association="BookInfoModel.FK_dbo_Books_dbo_Categories_Category_Id" />
       </Diagram>
     </edmx:Diagrams>

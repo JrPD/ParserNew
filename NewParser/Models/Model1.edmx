@@ -33,7 +33,7 @@
           <Key>
             <PropertyRef Name="Id" />
           </Key>
-          <Property Name="Id" Type="int" Nullable="false" />
+          <Property Name="Id" Type="int" Nullable="false" StoreGeneratedPattern="Identity" />
           <Property Name="Name" Type="nvarchar(max)" />
           <Property Name="Url" Type="nvarchar(max)" />
           <Property Name="ParentId" Type="int" Nullable="false" />
@@ -84,7 +84,7 @@
           <Key>
             <PropertyRef Name="Id" />
           </Key>
-          <Property Type="Int32" Name="Id" Nullable="false" />
+          <Property Type="Int32" Name="Id" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
           <Property Type="String" Name="Name" MaxLength="Max" FixedLength="false" Unicode="true" />
           <Property Type="String" Name="Url" MaxLength="Max" FixedLength="false" Unicode="true" />
           <Property Type="Int32" Name="ParentId" Nullable="false" />
