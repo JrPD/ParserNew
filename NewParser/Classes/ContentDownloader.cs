@@ -66,7 +66,7 @@ namespace NewParser.classes
                 if (!this.dbContext.Categories.Any(c => c.LevelName == (int?)LevelName.SubSubCategory))
                 {
                     ClearCategories();
-                    var content = GetURLContents(url);
+                    var content = GetURLContents(url).Result;
                     main = GetCategories(content);
                     main.All(
                         c =>
@@ -115,7 +115,7 @@ namespace NewParser.classes
                         this.smain.Clear();
                     }
                 }
-                GetBooks(count);
+               GetBooks(count);
             }
             //}
             //catch (Exception e)
@@ -153,7 +153,7 @@ namespace NewParser.classes
             return new List<string>();
         }
 
-        private void GetBooks(int count)
+        private async void GetBooks(int count)
         {
             foreach (var subCategory in dbContext.Categories.Where(c => c.LevelName == (int?)LevelName.SubCategory))
             {
@@ -167,9 +167,11 @@ namespace NewParser.classes
                     if (max < 2) max = 2;
                     for (var j = 1; j < max; j++)
                     {
-                        bookUrls.AddRange(SelecrUrl(GetURLContents(ssc.Url + "#1")));
-                        var contentList = bookUrls.Select(this.GetURLContents).ToList();
+                        bookUrls.AddRange(SelecrUrl(await GetURLContents(ssc.Url + "#1")));
+                        var contentList = bookUrls.Select(async c => await this.GetURLContents(c)).Select(c=>c.Result).ToList();
                         dbContext.Books.AddRange(contentList.Select(Parse).Select(dummy => (Book)dummy).ToList());
+                        dbContext.Database.Connection.Close();
+                        dbContext.Database.Connection.Open();
                         dbContext.SaveChanges();
                     }
                 }
@@ -346,7 +348,7 @@ namespace NewParser.classes
         {
 
             var list = new List<Category>();
-            var content = GetURLContents(parentUrl);
+            var content = GetURLContents(parentUrl).Result;
             //try
             //{
             var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
@@ -396,7 +398,7 @@ namespace NewParser.classes
         public List<Category> GetSubCategory(int pId, string parentUrl)
         {
             var list = new List<Category>();
-            var content = GetURLContents(parentUrl);
+            var content = GetURLContents(parentUrl).Result;
             //try
             //{
             var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
@@ -722,7 +724,7 @@ namespace NewParser.classes
             dbContext.SaveChanges();
         }
 
-        private string GetURLContents(string url)
+        private async Task<string> GetURLContents(string url)
         {
             var webReq = (HttpWebRequest)WebRequest.Create(url);
             using (var response = webReq.GetResponseAsync().Result)
