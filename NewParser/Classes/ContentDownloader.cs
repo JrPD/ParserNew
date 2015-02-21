@@ -170,6 +170,7 @@ namespace NewParser.classes
                         bookUrls.AddRange(SelecrUrl(GetURLContents(ssc.Url + "#1")));
                         var contentList = bookUrls.Select(this.GetURLContents).ToList();
                         dbContext.Books.AddRange(contentList.Select(Parse).Select(dummy => (Book)dummy).ToList());
+                        dbContext.SaveChanges();
                     }
                 }
                 ssmain.Clear();
