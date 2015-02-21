@@ -10,7 +10,7 @@ using System.Web;
 using FluentSharp.CoreLib;
 using HtmlAgilityPack;
 using NewParser.Models;
-using System.Threading.Tasks; 
+using System.Threading.Tasks;
 
 namespace NewParser.classes
 {
@@ -24,11 +24,18 @@ namespace NewParser.classes
     public class ContentDownloader
     {
         private readonly BookInfoEntities dbContext;
-        private const string MainUrl = "http://www.amazon.com/Best-Sellers-Kindle-Store-eBooks/zgbs/digital-text/154606011/ref=zg_bs_fvp_p_f_154606011?_encoding=UTF8&tf=1";
+
+        private const string MainUrl =
+            "http://www.amazon.com/Best-Sellers-Kindle-Store-eBooks/zgbs/digital-text/154606011/ref=zg_bs_fvp_p_f_154606011?_encoding=UTF8&tf=1";
+
         private int CategoryId;
+
         private List<Category> main;
+
         private List<Category> smain;
+
         private List<Category> ssmain;
+
         private readonly NLog.Logger Log = MvcApplication.logger;
 
         //private Timer
@@ -42,11 +49,13 @@ namespace NewParser.classes
             CategoryId = 0;
         }
 
-#region Logic for download all cateogies ones, and then download only books
+        #region Logic for download all cateogies ones, and then download only books
 
         public void OneMainDb(int count, string url = MainUrl)
         {
-            try
+            //try
+            //{
+            lock (dbContext)
             {
                 dbContext.Database.Connection.Close();
                 dbContext.Database.Connection.Open();
@@ -54,7 +63,7 @@ namespace NewParser.classes
                 main.Clear();
                 smain.Clear();
                 ssmain.Clear();
-                if (!this.dbContext.Categories.Any(c=>c.LevelName==(int?)LevelName.SubSubCategory))
+                if (!this.dbContext.Categories.Any(c => c.LevelName == (int?)LevelName.SubSubCategory))
                 {
                     ClearCategories();
                     var content = GetURLContents(url);
@@ -67,10 +76,9 @@ namespace NewParser.classes
                             });
                     main.forEach<Category>(c => dbContext.Categories.Add(c));
                     dbContext.SaveChanges();
-                    foreach (
-                        var category in
-                            this.dbContext.Categories.Where(c => c.LevelName == (int?)LevelName.Category)
-                                .Select(category => category))
+                    foreach (var category in
+                        this.dbContext.Categories.Where(c => c.LevelName == (int?)LevelName.Category)
+                            .Select(category => category))
                     {
                         var tmpSCat = this.GetSubCategory(category.Id, category.Url);
                         this.smain.addRange(tmpSCat);
@@ -84,20 +92,22 @@ namespace NewParser.classes
                         this.dbContext.SaveChanges();
                         foreach (var ssCategory in this.smain)
                         {
-                            foreach (
-                                var ID in
-                                    this.dbContext.Categories.Where(
-                                        c => c.Name == ssCategory.Name && c.Url == ssCategory.Url).Select(c => c.Id))
+                            foreach (var ID in
+                                this.dbContext.Categories.Where(
+                                    c => c.Name == ssCategory.Name && c.Url == ssCategory.Url).Select(c => c.Id))
                             {
                                 var tmpSSCat = this.GetSubSubCategory(ID, ssCategory.Url);
-                                this.ssmain.AddRange(tmpSSCat);
-                                this.ssmain.All(
-                                    c =>
-                                        {
-                                            c.LevelName = (int?)LevelName.SubSubCategory;
-                                            return true;
-                                        });
-                                tmpSSCat.forEach<Category>(c => this.dbContext.Categories.Add(c));
+                                if (tmpSSCat != null)
+                                {
+                                    this.ssmain.AddRange(tmpSSCat);
+                                    this.ssmain.All(
+                                        c =>
+                                            {
+                                                c.LevelName = (int?)LevelName.SubSubCategory;
+                                                return true;
+                                            });
+                                    tmpSSCat.forEach<Category>(c => this.dbContext.Categories.Add(c));
+                                }
                                 this.dbContext.SaveChanges();
                                 this.ssmain.Clear();
                             }
@@ -107,9 +117,11 @@ namespace NewParser.classes
                 }
                 GetBooks(count);
             }
-            catch
-            {
-            }
+            //}
+            //catch (Exception e)
+            //{
+            //    Debug.Write(string.Format("{0}\n", e.Message));
+            //}
         }
 
         private List<string> SelecrUrl(string content)
@@ -137,7 +149,7 @@ namespace NewParser.classes
                     }
                 }
             }
-            
+
             return new List<string>();
         }
 
@@ -145,172 +157,187 @@ namespace NewParser.classes
         {
             foreach (var subCategory in dbContext.Categories.Where(c => c.LevelName == (int?)LevelName.SubCategory))
             {
-                ssmain.AddRange(dbContext.Categories.Where(ssc => ssc.LevelName == (int?)LevelName.SubSubCategory
-                && ssc.ParentId == subCategory.Id));
+                ssmain.AddRange(
+                    dbContext.Categories.Where(
+                        ssc => ssc.LevelName == (int?)LevelName.SubSubCategory && ssc.ParentId == subCategory.Id));
                 foreach (var ssc in ssmain)
                 {
                     var bookUrls = new List<string>();
-                    var max = (int)((double)count / 20 + 0.95);
+                    var max = count / 20;
                     if (max < 2) max = 2;
                     for (var j = 1; j < max; j++)
                     {
-                        bookUrls.AddRange(SelecrUrl(GetURLContents(ssc.Url+"#1")));
+                        bookUrls.AddRange(SelecrUrl(GetURLContents(ssc.Url + "#1")));
                         var contentList = bookUrls.Select(this.GetURLContents).ToList();
                         dbContext.Books.AddRange(contentList.Select(Parse).Select(dummy => (Book)dummy).ToList());
                     }
                 }
                 ssmain.Clear();
             }
-           
+
         }
 
         private Book Parse(string content)
         {
             lock (this)
             {
-                try
+                //try
+                //{
+                var htmlDoc = new HtmlAgilityPack.HtmlDocument();
+                htmlDoc.OptionFixNestedTags = true;
+                htmlDoc.LoadHtml(content);
+                if (htmlDoc.DocumentNode != null)
                 {
-                    var htmlDoc = new HtmlAgilityPack.HtmlDocument();
-                    htmlDoc.OptionFixNestedTags = true;
-                    htmlDoc.LoadHtml(content);
-                    if (htmlDoc.DocumentNode != null)
+                    var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//div[@class='singlecolumnminwidth']");
+                    if (mainNode != null)
                     {
-                        var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//div[@class='singlecolumnminwidth']");
-                        if (mainNode != null)
-                        {
-                            var _image = "";
-                            var _Name = "";
-                            var _Author = "";
-                            var _Comments = new int();
-                            var _Price = new double();
-                            var _BestSellersRank = new int();
-                            var _Categories = "";
-                            var _PublicationDate = new DateTime();
-                            HtmlNode workNode = null;
+                        var _image = "";
+                        var _Name = "";
+                        var _Author = "";
+                        var _Comments = new int();
+                        var _Price = new double();
+                        var _BestSellersRank = new int();
+                        var _Categories = "";
+                        var _PublicationDate = new DateTime();
+                        HtmlNode workNode = null;
 
-                            //Image
-                            workNode = mainNode.SelectSingleNode("//img[@id='main-image']");
-                            if (workNode != null) _image = workNode.Attributes["src"].Value;
+                        //Image
+                        workNode = mainNode.SelectSingleNode("//img[@id='main-image']");
+                        if (workNode != null) _image = workNode.Attributes["src"].Value;
 
-                            // Name
-                            workNode = mainNode.SelectSingleNode("//span[@id='btAsinTitle']");
-                            if (workNode != null) _Name = workNode.ChildNodes[0].InnerText;
+                        // Name
+                        workNode = mainNode.SelectSingleNode("//span[@id='btAsinTitle']");
+                        if (workNode != null) _Name = workNode.ChildNodes[0].InnerText;
 
-                            // Author
-                            workNode = mainNode.SelectSingleNode("//div[@class='buying']/span");
-                            if (workNode != null) _Author = workNode.InnerHtml.ParseAuthor();
+                        // Author
+                        workNode = mainNode.SelectSingleNode("//div[@class='buying']/span");
+                        if (workNode != null) _Author = workNode.InnerHtml.ParseAuthor();
 
-                            // Comments
+                        // Comments
 
-                            workNode = mainNode.SelectSingleNode("//div[@class='fl gl5 mt3 txtnormal acrCount']/a");
-                            if (workNode != null) _Comments = workNode.ChildNodes[0].InnerText.ParseCount();
+                        workNode = mainNode.SelectSingleNode("//div[@class='fl gl5 mt3 txtnormal acrCount']/a");
+                        if (workNode != null) _Comments = workNode.ChildNodes[0].InnerText.ParseCount();
 
-                            // Price
-                            workNode = mainNode.SelectSingleNode("//b[@class='priceLarge']");
-                            if (workNode != null) _Price = workNode.InnerText.ParsePrice();
+                        // Price
+                        workNode = mainNode.SelectSingleNode("//b[@class='priceLarge']");
+                        if (workNode != null) _Price = workNode.InnerText.ParsePrice();
 
-                            // Amazon Best Sellers Rank
-                            workNode = mainNode.SelectSingleNode("//li[@id='SalesRank']");
-                            if (workNode != null) _BestSellersRank = workNode.InnerText.ParseRank();
+                        // Amazon Best Sellers Rank
+                        workNode = mainNode.SelectSingleNode("//li[@id='SalesRank']");
+                        if (workNode != null) _BestSellersRank = workNode.InnerText.ParseRank();
 
-                            // Categories
-                            // select ul with categories
-                            workNode = mainNode.SelectSingleNode("//ul[@class='zg_hrsr']");
-                            IEnumerable<Category> cont = null;
-                            if (workNode != null)
-                                cont = from li in workNode.Descendants("li")
-                                       from span in li.Descendants("span")
-                                       from a in span.Descendants("a")
-                                       select new Category { Name = a.InnerText };
+                        // Categories
+                        // select ul with categories
+                        workNode = mainNode.SelectSingleNode("//ul[@class='zg_hrsr']");
+                        IEnumerable<Category> cont = null;
+                        if (workNode != null)
+                            cont = from li in workNode.Descendants("li")
+                                   from span in li.Descendants("span")
+                                   from a in span.Descendants("a")
+                                   select new Category { Name = a.InnerText };
 
-                            // list for cont (context)
-                            var categories = new List<string>();
+                        // list for cont (context)
+                        var categories = new List<string>();
 
-                            // adding items from cont to list
-                            if (cont != null)
-                                foreach (var item in cont.Where(item => !categories.Contains(item.Name)))
-                                {
-                                    categories.Add(item.Name);
-                                }
-
-                            // make string
-                            var sb = new StringBuilder();
-                            foreach (var category in categories)
+                        // adding items from cont to list
+                        if (cont != null)
+                            foreach (var item in cont.Where(item => !categories.Contains(item.Name)))
                             {
-                                sb.Append(category + '\r');
+                                categories.Add(item.Name);
                             }
 
-                            // return string
-                            _Categories = sb.ToString();
-
-                            // Publication Data
-                            workNode = mainNode.SelectSingleNode("//input[@id='pubdate']");
-                            if (workNode != null) _PublicationDate = workNode.OuterHtml.ParseDate();
-
-                            //new book
-                            var book = new Book()
-                            {
-                                Image = _image,
-                                Name = _Name,
-                                Author = _Author,
-                                BestSellersRank = _BestSellersRank,
-                                //Categories = _Categories,
-                                Comments = _Comments,
-                                Price = _Price,
-                                PublicationDate = _PublicationDate
-                            };
-                            // return book  
-                            return book;
+                        // make string
+                        var sb = new StringBuilder();
+                        foreach (var category in categories)
+                        {
+                            sb.Append(category + '\r');
                         }
+
+                        // return string
+                        _Categories = sb.ToString();
+
+                        // Publication Data
+                        workNode = mainNode.SelectSingleNode("//input[@id='pubdate']");
+                        if (workNode != null) _PublicationDate = workNode.OuterHtml.ParseDate();
+
+                        //new book
+                        var book = new Book()
+                                       {
+                                           Image = _image,
+                                           Name = _Name,
+                                           Author = _Author,
+                                           BestSellersRank = _BestSellersRank,
+                                           //Categories = _Categories,
+                                           Comments = _Comments,
+                                           Price = _Price,
+                                           PublicationDate = _PublicationDate
+                                       };
+                        Debug.Write(string.Format("{0}\n", book.Name));
+                        // return book  
+                        return book;
                     }
                 }
-                catch
-                {
-                }
+                //}
+                //catch (Exception e)
+                //{
+                //    Debug.Write(string.Format("{0}\n", e.Message));
+                //}
             }
             return null;
         }
 
         private List<Category> GetCategories(string content)
         {
-            try
+            //try
+            //{
+            var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
+            htmlDoc.LoadHtml(content);
+            if (htmlDoc.DocumentNode != null)
             {
-                var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
-                htmlDoc.LoadHtml(content);
-                if (htmlDoc.DocumentNode != null)
+                var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//ul[@id='zg_browseRoot']/ul/ul/ul");
+                if (mainNode != null)
                 {
-                    var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//ul[@id='zg_browseRoot']/ul/ul/ul");
-                    if (mainNode != null)
-                    {
-                        var categories = new List<Category>();
-                        var keys = mainNode.ChildNodes.Where(node => node.HasChildNodes)
-                                .Select(node => node.FirstChild)
-                                .Select(item => item.InnerText).toArray();
-                        var values = mainNode.ChildNodes.Where(node => node.HasChildNodes)
-                                .Select(node => node.FirstChild)
-                                .Select(item => item.OuterHtml).toArray();
-                        if (keys.notNull() && values.notNull())
-                            for (var i = 0; i < values.Count(); i++)
+                    var categories = new List<Category>();
+                    var keys =
+                        mainNode.ChildNodes.Where(node => node.HasChildNodes)
+                            .Select(node => node.FirstChild)
+                            .Select(item => item.InnerText)
+                            .toArray();
+                    var values =
+                        mainNode.ChildNodes.Where(node => node.HasChildNodes)
+                            .Select(node => node.FirstChild)
+                            .Select(item => item.OuterHtml)
+                            .toArray();
+                    if (keys.notNull() && values.notNull())
+                        for (var i = 0; i < values.Count(); i++)
+                        {
+                            try
                             {
                                 var tmp = values[i].Remove(0, 9);
                                 tmp = tmp.Remove(tmp.IndexOf('\''));
                                 var cat = new Category()
-                                {
-                                    // Id = CategoryId,
-                                    Name = keys[i],
-                                    Url = tmp,
-                                    ParentId = 0
-                                };
+                                              {
+                                                  // Id = CategoryId,
+                                                  Name = keys[i],
+                                                  Url = tmp,
+                                                  ParentId = 0
+                                              };
                                 CategoryId++;
+                                Debug.Write(string.Format("{0} {1}\n", cat.Name, cat.LevelName));
                                 categories.Add(cat);
                             }
-                        return categories;
-                    }
+                            catch
+                            {
+                            }
+                        }
+                    return categories;
                 }
             }
-            catch
-            {
-            }
+            //}
+            //catch(Exception e)
+            //{
+            //    Debug.Write(string.Format("{0}\n", e.Message));
+            //}
             return null;
         }
 
@@ -319,43 +346,49 @@ namespace NewParser.classes
 
             var list = new List<Category>();
             var content = GetURLContents(parentUrl);
-            try
+            //try
+            //{
+            var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
+            htmlDoc.LoadHtml(content);
+            if (htmlDoc.DocumentNode != null)
             {
-                var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
-                htmlDoc.LoadHtml(content);
-                if (htmlDoc.DocumentNode != null)
+                var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//ul[@id='zg_browseRoot']/ul/ul/ul/ul/ul");
+                if (mainNode != null)
                 {
-                    var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//ul[@id='zg_browseRoot']/ul/ul/ul/ul/ul");
-                    if (mainNode != null)
-                    {
-                        var keys = mainNode.ChildNodes.Where(node => node.HasChildNodes)
-                                .Select(node => node.FirstChild)
-                                .Select(item => item.InnerText).toArray();
-                        var values = mainNode.ChildNodes.Where(node => node.HasChildNodes)
-                                .Select(node => node.FirstChild)
-                                .Select(item => item.OuterHtml).toArray();
-                        if (keys.notNull() && values.notNull())
-                            for (var i = 0; i < values.Count(); i++)
+                    var keys =
+                        mainNode.ChildNodes.Where(node => node.HasChildNodes)
+                            .Select(node => node.FirstChild)
+                            .Select(item => item.InnerText)
+                            .toArray();
+                    var values =
+                        mainNode.ChildNodes.Where(node => node.HasChildNodes)
+                            .Select(node => node.FirstChild)
+                            .Select(item => item.OuterHtml)
+                            .toArray();
+                    if (keys.notNull() && values.notNull())
+                        for (var i = 0; i < values.Count(); i++)
+                        {
+                            try
                             {
                                 var tmp = values[i].Remove(0, 9);
                                 tmp = tmp.Remove(tmp.IndexOf("\'>"));
-                                var cat = new Category()
-                                {
-                                    Id = CategoryId,
-                                    Name = keys[i],
-                                    Url = tmp,
-                                    ParentId = pId
-                                };
+                                var cat = new Category() { Name = keys[i], Url = tmp, ParentId = pId };
                                 CategoryId++;
+                                Debug.Write(string.Format("{0} {1}\n", cat.Name, cat.LevelName));
                                 list.Add(cat);
                             }
-                        return list;
-                    }
+                            catch
+                            {
+                            }
+                        }
+                    return list;
                 }
             }
-            catch
-            {
-            }
+            //}
+            //catch (Exception e)
+            //{
+            //    Debug.Write(string.Format("{0}\n", e.Message));
+            //}
             return null;
         }
 
@@ -363,58 +396,73 @@ namespace NewParser.classes
         {
             var list = new List<Category>();
             var content = GetURLContents(parentUrl);
-            try
+            //try
+            //{
+            var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
+            htmlDoc.LoadHtml(content);
+            if (htmlDoc.DocumentNode != null)
             {
-                var htmlDoc = new HtmlDocument { OptionFixNestedTags = true };
-                htmlDoc.LoadHtml(content);
-                if (htmlDoc.DocumentNode != null)
+                var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//ul[@id='zg_browseRoot']/ul/ul/ul/ul");
+                if (mainNode != null)
                 {
-                    var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//ul[@id='zg_browseRoot']/ul/ul/ul/ul");
-                    if (mainNode != null)
-                    {
-                        var keys = mainNode.ChildNodes.Where(node => node.HasChildNodes)
-                                .Select(node => node.FirstChild)
-                                .Select(item => item.InnerText).toArray();
-                        var values = mainNode.ChildNodes.Where(node => node.HasChildNodes)
-                                .Select(node => node.FirstChild)
-                                .Select(item => item.OuterHtml).toArray();
-                        if (keys.notNull() && values.notNull())
-                            for (var i = 0; i < values.Count(); i++)
+                    var keys =
+                        mainNode.ChildNodes.Where(node => node.HasChildNodes)
+                            .Select(node => node.FirstChild)
+                            .Select(item => item.InnerText)
+                            .toArray();
+                    var values =
+                        mainNode.ChildNodes.Where(node => node.HasChildNodes)
+                            .Select(node => node.FirstChild)
+                            .Select(item => item.OuterHtml)
+                            .toArray();
+                    if (keys.notNull() && values.notNull())
+                        for (var i = 0; i < values.Count(); i++)
+                        {
+                            try
                             {
                                 var tmp = values[i].Remove(0, 9);
                                 tmp = tmp.Remove(tmp.IndexOf('\''));
                                 var cat = new Category()
-                                {
-                                    //Id = CategoryId,
-                                    Name = keys[i],
-                                    Url = tmp,
-                                    ParentId = pId
-                                };
+                                              {
+                                                  //Id = CategoryId,
+                                                  Name = keys[i],
+                                                  Url = tmp,
+                                                  ParentId = pId
+                                              };
+                                Debug.Write(string.Format("{0} {1}\n", cat.Name, cat.LevelName));
                                 CategoryId++;
                                 list.Add(cat);
                             }
-                        return list;
-                    }
+                            catch
+                            {
+                            }
+                        }
+                    return list;
                 }
             }
-            catch
-            {
-            }
+            //}
+            //catch (Exception e)
+            //{
+            //    Debug.Write(string.Format("{0}\n", e.Message));
+            //}
             return null;
         }
-#endregion
 
-        public async Task  DownloadContent(int BooksCount, string url)
+        #endregion
+
+        public async Task DownloadContent(int BooksCount, string url)
         {
-                
-                //    for preload all DB only once and after allways search in DB
+
+            //    for preload all DB only once and after allways search in DB
             if (url.IsNullOrWhiteSpace()) OneMainDb(BooksCount);
             else OneMainDb(BooksCount, url);
 
             //tmp class for dunamicly download
             //return  DunamiclyDownload(url,BooksCount);
         }
+
         #region Logic for dunamicly download only current subsubcategories
+
         //private List<Book> DunamiclyDownload(string url, int count)
         //{
         //    //with auto increment Id
@@ -554,103 +602,106 @@ namespace NewParser.classes
         //        }
         //    }
         //}
-#endregion
+
+        #endregion
 
         #region Get books
+
         public async Task<Book> Parse(string content, string url, int id)
         {
             lock (this)
             {
-                try
+                //try
+                //{
+                var htmlDoc = new HtmlAgilityPack.HtmlDocument();
+                htmlDoc.OptionFixNestedTags = true;
+                htmlDoc.LoadHtml(content);
+                if (htmlDoc.DocumentNode != null)
                 {
-                    var htmlDoc = new HtmlAgilityPack.HtmlDocument();
-                    htmlDoc.OptionFixNestedTags = true;
-                    htmlDoc.LoadHtml(content);
-                    if (htmlDoc.DocumentNode != null)
+                    var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//div[@class='singlecolumnminwidth']");
+                    if (mainNode != null)
                     {
-                        var mainNode = htmlDoc.DocumentNode.SelectSingleNode("//div[@class='singlecolumnminwidth']");
-                        if (mainNode != null)
-                        {
-                            var _image = "";
-                            var _Name = "";
-                            var _Author = "";
-                            var _Comments = new int();
-                            var _Price = new double();
-                            var _BestSellersRank = new int();
-                            var _Categories = "";
-                            var _PublicationDate = new DateTime();
-                            HtmlNode workNode = null;
+                        var _image = "";
+                        var _Name = "";
+                        var _Author = "";
+                        var _Comments = new int();
+                        var _Price = new double();
+                        var _BestSellersRank = new int();
+                        var _Categories = "";
+                        var _PublicationDate = new DateTime();
+                        HtmlNode workNode = null;
 
-                            //Image
-                            workNode = mainNode.SelectSingleNode("//img[@id='main-image']");
-                            if (workNode != null) _image = workNode.Attributes["src"].Value;
+                        //Image
+                        workNode = mainNode.SelectSingleNode("//img[@id='main-image']");
+                        if (workNode != null) _image = workNode.Attributes["src"].Value;
 
-                            // Name
-                            workNode = mainNode.SelectSingleNode("//span[@id='btAsinTitle']");
-                            if (workNode != null) _Name = workNode.ChildNodes[0].InnerText;
+                        // Name
+                        workNode = mainNode.SelectSingleNode("//span[@id='btAsinTitle']");
+                        if (workNode != null) _Name = workNode.ChildNodes[0].InnerText;
 
-                            // Author
-                            workNode = mainNode.SelectSingleNode("//div[@class='buying']/span");
-                            if (workNode != null) _Author = workNode.InnerHtml.ParseAuthor();
+                        // Author
+                        workNode = mainNode.SelectSingleNode("//div[@class='buying']/span");
+                        if (workNode != null) _Author = workNode.InnerHtml.ParseAuthor();
 
-                            // Comments
+                        // Comments
 
-                            workNode = mainNode.SelectSingleNode("//div[@class='fl gl5 mt3 txtnormal acrCount']/a");
-                            if (workNode != null) _Comments = workNode.ChildNodes[0].InnerText.ParseCount();
+                        workNode = mainNode.SelectSingleNode("//div[@class='fl gl5 mt3 txtnormal acrCount']/a");
+                        if (workNode != null) _Comments = workNode.ChildNodes[0].InnerText.ParseCount();
 
-                            // Price
-                            workNode = mainNode.SelectSingleNode("//b[@class='priceLarge']");
-                            if (workNode != null) _Price = workNode.InnerText.ParsePrice();
+                        // Price
+                        workNode = mainNode.SelectSingleNode("//b[@class='priceLarge']");
+                        if (workNode != null) _Price = workNode.InnerText.ParsePrice();
 
-                            // Amazon Best Sellers Rank
-                            workNode = mainNode.SelectSingleNode("//li[@id='SalesRank']");
-                            if (workNode != null) _BestSellersRank = workNode.InnerText.ParseRank();
+                        // Amazon Best Sellers Rank
+                        workNode = mainNode.SelectSingleNode("//li[@id='SalesRank']");
+                        if (workNode != null) _BestSellersRank = workNode.InnerText.ParseRank();
 
-                            // Categories
-                            // select ul with categories
-                            workNode = mainNode.SelectSingleNode("//ul[@class='zg_hrsr']");
-                            IEnumerable<Category> cont = null;
-                            if (workNode != null)
-                                cont = from li in workNode.Descendants("li")
-                                       from span in li.Descendants("span")
-                                       from a in span.Descendants("a")
-                                       select new Category { Name = a.InnerText };
+                        // Categories
+                        // select ul with categories
+                        workNode = mainNode.SelectSingleNode("//ul[@class='zg_hrsr']");
+                        IEnumerable<Category> cont = null;
+                        if (workNode != null)
+                            cont = from li in workNode.Descendants("li")
+                                   from span in li.Descendants("span")
+                                   from a in span.Descendants("a")
+                                   select new Category { Name = a.InnerText };
 
-                            // list for cont (context)
-                            var categories = new List<string>();
+                        // list for cont (context)
+                        var categories = new List<string>();
 
-                            // adding items from cont to list
-                            if (cont != null)
-                                foreach (var item in cont.Where(item => !categories.Contains(item.Name)))
-                                {
-                                    categories.Add(item.Name);
-                                }
-
-                            // Publication Data
-                            workNode = mainNode.SelectSingleNode("//input[@id='pubdate']");
-                            if (workNode != null) _PublicationDate = workNode.OuterHtml.ParseDate();
-
-                            //new book
-                            var book = new Book()
+                        // adding items from cont to list
+                        if (cont != null)
+                            foreach (var item in cont.Where(item => !categories.Contains(item.Name)))
                             {
-                                Image = _image,
-                                Name = _Name,
-                                Author = _Author,
-                                BestSellersRank = _BestSellersRank,
-                                Comments = _Comments,
-                                Price = _Price,
-                                PublicationDate = _PublicationDate,
-                                Category_Id = id,
-                                Url = url
-                            };
-                            // return book  
-                            return book;
-                        }
+                                categories.Add(item.Name);
+                            }
+
+                        // Publication Data
+                        workNode = mainNode.SelectSingleNode("//input[@id='pubdate']");
+                        if (workNode != null) _PublicationDate = workNode.OuterHtml.ParseDate();
+
+                        //new book
+                        var book = new Book()
+                                       {
+                                           Image = _image,
+                                           Name = _Name,
+                                           Author = _Author,
+                                           BestSellersRank = _BestSellersRank,
+                                           Comments = _Comments,
+                                           Price = _Price,
+                                           PublicationDate = _PublicationDate,
+                                           Category_Id = id,
+                                           Url = url
+                                       };
+                        // return book  
+                        return book;
                     }
                 }
-                catch (Exception e)
-                {
-                }
+                //}
+                //catch (Exception e)
+                //{
+                //    Debug.Write(string.Format("{0}\n", e.Message));
+                //}
             }
             return null;
         }
@@ -660,13 +711,13 @@ namespace NewParser.classes
 
         public void ClearBooks()
         {
-            dbContext.Books.Select(c=>c).ForEach(c=>dbContext.Books.Remove(c));
+            dbContext.Books.Select(c => c).ForEach(c => dbContext.Books.Remove(c));
             dbContext.SaveChanges();
         }
 
         public void ClearCategories()
         {
-            dbContext.Categories.RemoveRange(dbContext.Categories.Select(c=>c));
+            dbContext.Categories.RemoveRange(dbContext.Categories.Select(c => c));
             dbContext.SaveChanges();
         }
 
@@ -675,22 +726,21 @@ namespace NewParser.classes
             var webReq = (HttpWebRequest)WebRequest.Create(url);
             using (var response = webReq.GetResponseAsync().Result)
             {
-                try
+                //try
+                //{
+                using (var sr = new StreamReader(response.GetResponseStream()))
                 {
-                    using (var sr = new StreamReader(response.GetResponseStream()))
-                    {
-                        var responseJson = sr.ReadToEnd();
-                        return responseJson;
-                    }
-                }
-                catch
-                {
-                    return null;
+                    var responseJson = sr.ReadToEnd();
+                    return responseJson;
                 }
             }
-        }
+            //catch (Exception e)
+            //{
+            //    Debug.Write(string.Format("{0}\n", e.Message));
 
-        
+            //    return null;
+            //}
+        }
     }
 }
 

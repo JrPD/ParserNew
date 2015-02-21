@@ -31,7 +31,6 @@ namespace NewParser.Controllers
 
             ViewBag.dropdownCount = new SelectList(new Dictionary<string, int>
             {
-                {"1", 1},
                 {"20", 20},
                 {"40", 40},
                 {"60", 60},
@@ -41,7 +40,7 @@ namespace NewParser.Controllers
             ViewBag.counts = 4;
         }
 
-        public  ActionResult Index()
+        public ActionResult Index()
         {
             InitializeList();
             Log.Info("Index Method");
@@ -57,7 +56,7 @@ namespace NewParser.Controllers
 
             await MvcApplication.ContentDownloader.DownloadContent(BooksCount, BooksUrl);
             Log.Info("Parsebooks Method{0}", BooksCount);
-            return "Parsing is completed. "+ "Books count: " + BooksCount;
+            return "Parsing is completed. " + "Books count: " + BooksCount;
         }
 
 
